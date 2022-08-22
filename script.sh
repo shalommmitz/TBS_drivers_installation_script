@@ -1,8 +1,23 @@
 #!/bin/bash
 
-# This script was copied from https://www.tbsdtv.com/forum/viewtopic.php?f=87&t=25391
+# This script was originally copied from 
+#    https://www.tbsdtv.com/forum/viewtopic.php?f=87&t=25391
 # This script was written by andreril at Mon Oct 26 2020
 
+# Check if installation already exists
+# If yes, and we need to re-install due to kernel upgrade,
+#             the only solution that worked for me is to rm both media and media_build
+if [[ -d media ]]
+then
+    echo "Folder 'media' exists --> assuming installation pre-exists"
+    echo "Will delete folders 'media' and 'media_build'
+    echo 'press ^C to abort or Enter to continue"
+    read AABBCCDD
+    rm -rf media media_build
+fi
+
+echo AFTER
+exit
 #install compile essentials
 sudo apt --yes install linux-headers-$(uname -r)
 sudo apt --yes install build-essential
