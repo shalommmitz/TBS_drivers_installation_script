@@ -16,8 +16,6 @@ then
     rm -rf media media_build
 fi
 
-echo AFTER
-exit
 #install compile essentials
 sudo apt --yes install linux-headers-$(uname -r)
 sudo apt --yes install build-essential
