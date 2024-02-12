@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+# This script was originally taken from: https://www.tbsdtv.com/forum/viewtopic.php?f=87&t=25391
+# Original script by andreril at Mon Oct 26 2020 (no farther info on the original author found)
+
+import os
+# Check if installation already exists
+# If yes, and we need to re-install due to kernel upgrade
+#             the only solution that worked for me is to rm both media and media_build
+if os.path.isdir("media"):
+    print("Folder 'media' exists --> assuming installation pre-exists")
+    print("Will delete folders 'media' and 'media_build'")
+    input("   press ^C to abort or Enter to continue")
+    os.system("    rm -rf media media_build")
+
+#install and compile essentials"
+os.system("sudo apt --yes install linux-headers-$(uname -r)")
+os.system("sudo apt --yes install build-essential")
+os.system("sudo apt --yes install patchutils libproc-processtable-perl")
+os.system("sudo apt --yes install dvb-apps")
+
+#download firmware
+os.system("rm -f tbs-tuner-firmwares_v1.0.tar.bz2")
+os.system("wget http://www.tbsdtv.com/download/document/linux/tbs-tuner-firmwares_v1.0.tar.bz2")
+os.system("sudo tar jxvf tbs-tuner-firmwares_v1.0.tar.bz2 -C /lib/firmware/")
+
+#new build
+os.system("git clone https://github.com/tbsdtv/media_build.git")
+os.system("git clone --depth=1 https://github.com/tbsdtv/linux_media.git -b latest ./media")
+os.system("cd media_build; make dir DIR=../media")
+os.system("cd media_build; make allyesconfig")
+os.system("cd media_build; make -j4")
+os.system("cd media_build; sudo make install")
+
+#build and make tbs opensource drivers
+os.system("sudo make rmmod")
+os.system("sudo modprobe saa716x_tbs-dvb")
+os.system("lspci")
+os.system("dmesg | grep frontend")
+
+#load "saa716x_tbs-dvb" modules
+os.system("echo saa716x_tbs-dvb | sudo tee /etc/modules-load.d/tbs.conf")
+
+os.system("#install dvb-apps")
+os.system("sudo apt --yes install dvb-apps")
+os.system("sudo lsdvb")
+os.system("sudo reboot")
