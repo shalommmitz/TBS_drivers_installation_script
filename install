@@ -19,8 +19,17 @@ os.system("sudo apt --yes install patchutils libproc-processtable-perl")
 os.system("sudo apt --yes install dvb-apps")
 
 #download firmware
-os.system("rm -f tbs-tuner-firmwares_v1.0.tar.bz2")
-os.system("wget http://www.tbsdtv.com/download/document/linux/tbs-tuner-firmwares_v1.0.tar.bz2")
+fn = "tbs-tuner-firmwares_v1.0.tar.bz2"
+remote_path = "http://www.tbsdtv.com/download/document/linux/"
+need_to_fetch = True
+if os.path.isfile(fn):
+    update_size = os.popen(f"wget {remote_path}{fn} --spider --server-response -O - 2>&1" +" | sed -ne '/Content-Length/{s/.*: //;p}'").read().strip()
+    current_size = str(os.path.getsize(fn))
+    if update_size==current_size: need_to_fetch = False
+if need_to_fetch:
+    os.system("rm -f tbs-tuner-firmwares_v1.0.tar.bz2")
+    os.system("wget http://www.tbsdtv.com/download/document/linux/tbs-tuner-firmwares_v1.0.tar.bz2")
+exit()
 os.system("sudo tar jxvf tbs-tuner-firmwares_v1.0.tar.bz2 -C /lib/firmware/")
 
 #new build
