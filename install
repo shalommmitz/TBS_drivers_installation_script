@@ -29,7 +29,7 @@ if os.path.isfile(fn):
 if need_to_fetch:
     os.system("rm -f tbs-tuner-firmwares_v1.0.tar.bz2")
     os.system("wget http://www.tbsdtv.com/download/document/linux/tbs-tuner-firmwares_v1.0.tar.bz2")
-exit()
+
 os.system("sudo tar jxvf tbs-tuner-firmwares_v1.0.tar.bz2 -C /lib/firmware/")
 
 #new build
