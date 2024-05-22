@@ -17,6 +17,7 @@ os.system("sudo apt --yes install linux-headers-$(uname -r)")
 os.system("sudo apt --yes install build-essential")
 os.system("sudo apt --yes install patchutils libproc-processtable-perl")
 os.system("sudo apt --yes install dvb-apps")
+os.system("sudo apt --yes install gcc-12")
 
 #download firmware
 fn = "tbs-tuner-firmwares_v1.0.tar.bz2"
