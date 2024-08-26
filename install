@@ -18,6 +18,7 @@ os.system("sudo apt --yes install build-essential")
 os.system("sudo apt --yes install patchutils libproc-processtable-perl")
 os.system("sudo apt --yes install dvb-apps")
 os.system("sudo apt --yes install gcc-12")
+os.system("sudo apt --yes install dwarves")
 
 #download firmware
 fn = "tbs-tuner-firmwares_v1.0.tar.bz2"
@@ -43,7 +44,11 @@ os.system("cd media_build; sudo make install")
 
 #build and make tbs opensource drivers
 os.system("sudo make rmmod")
-os.system("sudo modprobe saa716x_tbs-dvb")
+ans = os.popen("sudo modprobe saa716x_tbs-dvb").read()
+if "FATAL" in ans:
+     print("ERROR: modprobe failed:", ans)
+     print("Aborting")
+     exit()
 os.system("lspci")
 os.system("dmesg | grep frontend")
 

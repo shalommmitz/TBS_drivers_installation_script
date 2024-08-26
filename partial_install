@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+# This script was originally taken from: https://www.tbsdtv.com/forum/viewtopic.php?f=87&t=25391
+# Original script by andreril at Mon Oct 26 2020 (no farther info on the original author found)
+
+import os
+# Assuming media and media-build pre exist
+os.system("cd media_build; make cleanall")
+os.system("cd media_build; make dir DIR=../media")
+os.system("cd media_build; make allyesconfig")
+os.system("cd media_build; make -j4")
+os.system("cd media_build; sudo make install")
+
+#build and make tbs opensource drivers
+os.system("sudo make rmmod")
+ans = os.popen("sudo modprobe saa716x_tbs-dvb").read()
+if "FATAL" in ans:
+     print("ERROR: modprobe failed:", ans)
+     print("Aborting")
+     exit()
+os.system("lspci")
+os.system("dmesg | grep frontend")
+
+#load "saa716x_tbs-dvb" modules
+os.system("echo saa716x_tbs-dvb | sudo tee /etc/modules-load.d/tbs.conf")
+
+os.system("#install dvb-apps")
+os.system("sudo apt --yes install dvb-apps")
+os.system("sudo lsdvb")
+os.system("sudo reboot")
