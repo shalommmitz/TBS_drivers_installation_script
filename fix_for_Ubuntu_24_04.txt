@@ -1,0 +1,17 @@
+Source: https://github.com/tbsdtv/linux_media/issues/370
+
+Issue: "make" fails
+
+Solution: 
+
+- Delete the file `media_build/backports/v6.8-ccs.patch`
+
+- Delete the line containing "v6.8-ccs" from the file `media_build/backports/backports.txt`
+
+- Edit the file `media_build/v4l/ccs-core.c`
+  
+    In the line (#668?) that contains `pm_runtime_get_if_active(&client->dev, true);` remove the `, true`
+
+- Run: `cd media_build; make cleanall; make dir DIR=../media`
+
+- Run: `cd media_build; sudo make install`
