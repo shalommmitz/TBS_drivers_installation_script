@@ -4,14 +4,24 @@ Issue: "make" fails
 
 Solution: 
 
-- Delete the file `media_build/backports/v6.8-ccs.patch`
+1. Run the "./install" as normal. It will fail
+2. Delete the line containing "v6.8-ccs" at the file `media_build/backports/backports.txt`
 
-- Delete the line containing "v6.8-ccs" from the file `media_build/backports/backports.txt`
+   vi media_build/backports/backports.txt
 
-- Edit the file `media_build/v4l/ccs-core.c`
+3. Edit the file `media_build/v4l/ccs-core.c`
   
-    In the line (#668?) that contains `pm_runtime_get_if_active(&client->dev, true);` remove the `, true`
+   vi media_build/linux/drivers/media/i2c/ccs/ccs-core.c
+   668G
+   change: `pm_runtime_get_if_active(&client->dev, true);` remove the `, true`
 
-- Run: `cd media_build; make cleanall; make dir DIR=../media`
+4. make -C media_build/v4l
 
-- Run: `cd media_build; sudo make install`
+(will run for about 20 minutes)
+
+5. sudo make -C media_build/v4l install
+6. sudo depmod -a
+7. sudo modprobe saa716x_tbs-dvb
+8. ls /dev/dvb
+
+Now you should see the tuners
