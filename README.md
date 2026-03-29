@@ -1,5 +1,13 @@
 # A Script to Install Drivers for TBS Sat Receivers
 
+Note: You can download the following drivers from the [TBS site](https://www.tbsiptv.com/index.php?route=product/download/drivers&path=6&id=27):
+
+  - [For Kernel V6.8 ~ V6.18](https://www.tbsiptv.com/download/common/tbsdvb_v1013.tar.bz2)
+  - [For Kernel V4.19 - V6.12](https://www.tbsdtv.com/download/document/linux/media_build-2025-04-28.tar.bz2)
+
+
+
+
 Tested on Ubuntu 20.04
 
 The original script is from https://www.tbsdtv.com/forum/viewtopic.php?f=87&t=25391
