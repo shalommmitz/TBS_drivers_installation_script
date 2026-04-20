@@ -4,4 +4,4 @@ from tbs_install_lib import fresh_install
 
 
 if __name__ == "__main__":
-    fresh_install(force_refresh_source=True)
+    fresh_install()

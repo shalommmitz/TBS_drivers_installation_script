@@ -8,7 +8,7 @@ Keep the installer focused on the current known-good path for modern Ubuntu syst
 
 - direct TBS driver package: `tbsdvb_v1013.tar.bz2`
 - kernel family: Linux `6.8+`
-- top-level PCI module to load: `tbsecp3`
+- load the hardware-matching top-level TBS runtime module
 - scope: TBS satellite-capable PCIe and USB devices only
 
 ## Current Working Model
@@ -16,9 +16,13 @@ Keep the installer focused on the current known-good path for modern Ubuntu syst
 The maintained entry points are:
 
 - `install`
-- `partial_install`
-- `exprimental_script`
+- `install_reuse_tree`
+- `install_wo_fetch`
 - `tbs_install_lib.py`
+
+Historical reference only:
+
+- `install_legacy_bash`
 
 `tbs_install_lib.py` is the real implementation. The other scripts are thin entry points.
 
@@ -32,14 +36,17 @@ The scripts currently:
 - run `sudo make install`
 - install firmware
 - run `depmod`
-- load `tbsecp3`
-- persist autoload via `/etc/modules-load.d/tbs.conf`
+- detect the matching TBS PCI/USB module for the connected hardware
+- load the detected module(s)
+- persist the detected module(s) via `/etc/modules-load.d/tbs.conf`
 
 ## Do Not Reintroduce
 
 For Linux `6.8+`, do not switch this folder back to the older `media_build` / `linux_media` flow unless the user explicitly asks for that legacy path.
 
 Do not assume the working module is `saa716x_tbs-dvb`.
+
+Do not assume `tbsecp3` is always the correct runtime module. That is correct for supported TBS PCIe cards, but USB devices need their matching `dvb-usb-*` module.
 
 Do not expand the build back to the full mixed upstream module set unless the user explicitly wants that.
 
@@ -53,6 +60,7 @@ Look for:
 
 - `SATELLITE_MODDEFS`
 - `restrict_makefile_to_satellite_only()`
+- `detect_target_modules()`
 
 That allowlist intentionally keeps:
 
@@ -68,6 +76,8 @@ That allowlist intentionally avoids:
 
 If you change the allowlist, preserve dependency completeness. Removing a shared frontend or tuner helper can break a TBS satellite device even if the top-level device module still builds.
 
+If you change runtime module detection, verify both PCI-only and USB-only hosts.
+
 ## Known Pitfalls
 
 - A kernel upgrade can leave a stale installed module under `/lib/modules/.../updates/` with the wrong `vermagic`.
@@ -79,15 +89,15 @@ If you change the allowlist, preserve dependency completeness. Removing a shared
 
 After any meaningful change, verify these in this order:
 
-1. `modinfo tbsecp3 | egrep '^(filename|vermagic|name):'`
+1. `modinfo <top-level-module> | egrep '^(filename|vermagic|name):'`
 2. `lsmod | egrep 'tb|tbs|dvb|saa716'`
 3. `ls -la /dev/dvb`
 4. `find /dev/dvb -maxdepth 2 -type c | sort`
 
 Healthy state looks like:
 
-- `tbsecp3` installed for the running kernel
-- `tbsecp3`, `dvb_core`, and required helper modules loaded
+- the hardware-matching top-level module installed for the running kernel
+- the hardware-matching top-level module, `dvb_core`, and required helper modules loaded
 - `/dev/dvb/adapter*` present
 - each adapter exposing `frontend0`, `demux0`, `dvr0`, and `net0`
 
@@ -95,7 +105,7 @@ Healthy state looks like:
 
 Prefer changing `tbs_install_lib.py` instead of duplicating logic across entry-point scripts.
 
-Keep historical files such as `old_bash_script` and the Ubuntu 24.04 fix notes as reference unless the user explicitly asks to clean them up.
+Keep historical files such as `install_legacy_bash` and the Ubuntu 24.04 fix notes as reference unless the user explicitly asks to clean them up.
 
 If you update behavior, also update:
 

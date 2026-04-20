@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import re
+import shlex
 import shutil
 import subprocess
 import tarfile
@@ -18,8 +19,24 @@ FIRMWARE_URL = "http://www.tbsdtv.com/download/document/linux/tbs-tuner-firmware
 FIRMWARE_ARCHIVE = SCRIPT_DIR / "tbs-tuner-firmwares_v1.0.tar.bz2"
 FIRMWARE_DIR = Path("/lib/firmware")
 
-MODULE_NAME = "tbsecp3"
 MODULE_LOAD_CONF = Path("/etc/modules-load.d/tbs.conf")
+TBS_PCI_VENDOR = "544d"
+PCI_MODULES = ["tbsecp3"]
+USB_MODULES = [
+    "dvb-usb-tbsqbox",
+    "dvb-usb-tbsqbox2",
+    "dvb-usb-tbsqbox22",
+    "dvb-usb-tbs5520",
+    "dvb-usb-tbs5520se",
+    "dvb-usb-tbs5530",
+    "dvb-usb-tbs5580",
+    "dvb-usb-tbs5590",
+    "dvb-usb-tbs5922se",
+    "dvb-usb-tbs5925",
+    "dvb-usb-tbs5927",
+    "dvb-usb-tbs5930",
+    "dvb-usb-tbs5931",
+]
 
 # Limit the build to TBS satellite-capable PCIe/USB device modules plus the
 # shared demod/tuner helpers those devices need. Pure terrestrial/cable-only
@@ -74,6 +91,10 @@ SATELLITE_MODDEFS = [
 def run(cmd, cwd=None, check=True):
     print(f">>> {cmd}")
     subprocess.run(cmd, shell=True, cwd=cwd, check=check)
+
+
+def read_output(cmd):
+    return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
 
 
 def running_kernel():
@@ -199,12 +220,90 @@ def install_source_tree():
     run("sudo depmod -a")
 
 
-def load_driver():
-    run(f"sudo modprobe {MODULE_NAME}")
+def modinfo_field(module, field):
+    try:
+        output = subprocess.check_output(
+            ["modinfo", "-F", field, module],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return []
+    return [line.strip() for line in output.splitlines() if line.strip()]
 
 
-def enable_autoload():
-    run(f"printf '%s\\n' {MODULE_NAME} | sudo tee {MODULE_LOAD_CONF} >/dev/null")
+def canonical_module_name(module):
+    names = modinfo_field(module, "name")
+    return names[0] if names else module.replace("-", "_")
+
+
+def detected_usb_ids():
+    try:
+        output = read_output(["lsusb"])
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return set()
+
+    usb_ids = set()
+    for line in output.splitlines():
+        match = re.search(r"ID\s+([0-9A-Fa-f]{4}):([0-9A-Fa-f]{4})", line)
+        if match:
+            usb_ids.add((match.group(1).lower(), match.group(2).lower()))
+    return usb_ids
+
+
+def has_tbs_pci_hardware():
+    try:
+        output = read_output(["lspci", "-n"])
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+    return re.search(rf"\b{TBS_PCI_VENDOR}:[0-9A-Fa-f]{{4}}\b", output) is not None
+
+
+def usb_module_matches_hardware(module, usb_ids):
+    for alias in modinfo_field(module, "alias"):
+        match = re.search(r"usb:v([0-9A-Fa-f]{4})p([0-9A-Fa-f]{4})", alias)
+        if match and (match.group(1).lower(), match.group(2).lower()) in usb_ids:
+            return True
+    return False
+
+
+def detect_target_modules():
+    modules = []
+
+    if has_tbs_pci_hardware():
+        modules.extend(PPCI for PPCI in PCI_MODULES)
+
+    usb_ids = detected_usb_ids()
+    for module in USB_MODULES:
+        if usb_module_matches_hardware(module, usb_ids):
+            modules.append(module)
+
+    canonical = []
+    seen = set()
+    for module in modules:
+        name = canonical_module_name(module)
+        if name not in seen:
+            seen.add(name)
+            canonical.append(name)
+
+    if not canonical:
+        raise SystemExit(
+            "Could not match the connected TBS hardware to a supported module. "
+            "Inspect lsusb/lspci output and update the module allowlist if needed."
+        )
+
+    print("Detected TBS modules to load:", ", ".join(canonical))
+    return canonical
+
+
+def load_driver_modules(modules):
+    for module in modules:
+        run(f"sudo modprobe {module}")
+
+
+def enable_autoload(modules):
+    quoted = " ".join(shlex.quote(module) for module in modules)
+    run(f"printf '%s\\n' {quoted} | sudo tee {MODULE_LOAD_CONF} >/dev/null")
 
 
 def verify_installation():
@@ -219,8 +318,9 @@ def fresh_install(force_refresh_source=False):
     build_source_tree(clean=True)
     install_source_tree()
     install_firmware()
-    load_driver()
-    enable_autoload()
+    modules = detect_target_modules()
+    load_driver_modules(modules)
+    enable_autoload(modules)
     verify_installation()
     print("TBS driver install completed.")
 
@@ -237,7 +337,8 @@ def rebuild_existing_source():
     install_source_tree()
     if FIRMWARE_ARCHIVE.exists():
         install_firmware()
-    load_driver()
-    enable_autoload()
+    modules = detect_target_modules()
+    load_driver_modules(modules)
+    enable_autoload(modules)
     verify_installation()
     print("TBS driver rebuild completed.")
