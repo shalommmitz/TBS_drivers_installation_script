@@ -4,38 +4,35 @@ This folder contains the maintained installer wrappers for TBS DVB drivers.
 
 ## Goal
 
-Keep the installer focused on the current known-good path for modern Ubuntu systems:
+Keep the installer selecting between the two known-good paths:
 
-- direct TBS driver package: `tbsdvb_v1013.tar.bz2`
-- kernel family: Linux `6.8+`
+- direct TBS driver package: `tbsdvb_v1013.tar.bz2` for Linux `6.8+`
+- legacy `media_build` / `linux_media` workflow for older kernels
 - load the hardware-matching top-level TBS runtime module
-- scope: TBS satellite-capable PCIe and USB devices only
+- scope: TBS satellite-capable PCIe and USB devices only on the direct-package path
 
 ## Current Working Model
 
 The maintained entry points are:
 
 - `install`
-- `install_reuse_tree`
-- `install_wo_fetch`
 - `tbs_install_lib.py`
+- `old/install_reuse_tree`
+- `old/install_wo_fetch`
 
 Historical reference only:
 
-- `install_legacy_bash`
+- `old/install_legacy_bash`
 
 `tbs_install_lib.py` is the real implementation. The other scripts are thin entry points.
 
 The scripts currently:
 
 - install the matching kernel headers and build tools
-- download or reuse the direct TBS source tarball
-- extract it into a sibling directory named `tbs_install_drivers_from_TBS`
-- rewrite the extracted `Makefile` to a satellite-focused `MODDEFS` allowlist
-- build for the running kernel
-- run `sudo make install`
+- choose the direct TBS package for Linux `6.8+` and the legacy `media_build` / `linux_media` flow for older kernels
+- on the direct path, download or reuse the direct TBS source tarball, extract it into `tbs_install_drivers_from_TBS`, rewrite the `Makefile` to a satellite-focused `MODDEFS` allowlist, build it, and run `sudo make install`
+- on the legacy path, clone or reuse sibling `media_build` and `media` trees, prepare the backport tree via `make dir DIR=../media`, and run `./install.sh`
 - install firmware
-- run `depmod`
 - detect the matching TBS PCI/USB module for the connected hardware
 - load the detected module(s)
 - persist the detected module(s) via `/etc/modules-load.d/tbs.conf`
@@ -44,7 +41,9 @@ The scripts currently:
 
 For Linux `6.8+`, do not switch this folder back to the older `media_build` / `linux_media` flow unless the user explicitly asks for that legacy path.
 
-Do not assume the working module is `saa716x_tbs-dvb`.
+For older kernels, do not force the direct-package path when the script has already selected the legacy workflow.
+
+Do not assume the working module is `saa716x_tbs-dvb` or `tbsecp3`. The correct PCI runtime module can depend on which build path produced the installed driver.
 
 Do not assume `tbsecp3` is always the correct runtime module. That is correct for supported TBS PCIe cards, but USB devices need their matching `dvb-usb-*` module.
 
@@ -52,7 +51,7 @@ Do not expand the build back to the full mixed upstream module set unless the us
 
 ## Build Scope
 
-The build scope is controlled in:
+The direct-package build scope is controlled in:
 
 - [tbs_install_lib.py](/workspace/code/TBS_drivers_installation_script/tbs_install_lib.py)
 
@@ -75,6 +74,8 @@ That allowlist intentionally avoids:
 - clearly terrestrial/cable-only TBS USB lines such as `5220`, `5230`, and `5881`
 
 If you change the allowlist, preserve dependency completeness. Removing a shared frontend or tuner helper can break a TBS satellite device even if the top-level device module still builds.
+
+The legacy `media_build` / `linux_media` path does not use that narrowed `MODDEFS` allowlist.
 
 If you change runtime module detection, verify both PCI-only and USB-only hosts.
 
