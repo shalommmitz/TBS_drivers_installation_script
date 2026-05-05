@@ -11,9 +11,16 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 HOME_DIR = SCRIPT_DIR.parent
 
+DIRECT_KERNEL_MIN = (6, 8)
+
 DRIVER_URL = "https://www.tbsiptv.com/download/common/tbsdvb_v1013.tar.bz2"
 DRIVER_ARCHIVE = SCRIPT_DIR / "tbsdvb_v1013.tar.bz2"
 SOURCE_DIR = HOME_DIR / "tbs_install_drivers_from_TBS"
+
+LEGACY_MEDIA_BUILD_REPO = "https://github.com/tbsdtv/media_build.git"
+LEGACY_MEDIA_REPO = "https://github.com/tbsdtv/linux_media.git"
+LEGACY_MEDIA_BUILD_DIR = HOME_DIR / "media_build"
+LEGACY_MEDIA_DIR = HOME_DIR / "media"
 
 FIRMWARE_URL = "http://www.tbsdtv.com/download/document/linux/tbs-tuner-firmwares_v1.0.tar.bz2"
 FIRMWARE_ARCHIVE = SCRIPT_DIR / "tbs-tuner-firmwares_v1.0.tar.bz2"
@@ -21,7 +28,7 @@ FIRMWARE_DIR = Path("/lib/firmware")
 
 MODULE_LOAD_CONF = Path("/etc/modules-load.d/tbs.conf")
 TBS_PCI_VENDOR = "544d"
-PCI_MODULES = ["tbsecp3"]
+PCI_MODULE_CANDIDATES = ["tbsecp3", "saa716x_tbs-dvb", "saa716x_tbs_dvb"]
 USB_MODULES = [
     "dvb-usb-tbsqbox",
     "dvb-usb-tbsqbox2",
@@ -101,20 +108,36 @@ def running_kernel():
     return subprocess.check_output(["uname", "-r"], text=True).strip()
 
 
-def ensure_supported_kernel():
-    match = re.match(r"^(\d+)\.(\d+)", running_kernel())
+def kernel_version(kernel=None):
+    kernel = kernel or running_kernel()
+    match = re.match(r"^(\d+)\.(\d+)", kernel)
     if not match:
         raise SystemExit("Unable to parse the running kernel version.")
-
-    major, minor = (int(part) for part in match.groups())
-    if (major, minor) < (6, 8):
-        raise SystemExit(
-            "This installer now targets the direct TBS package for Linux 6.8 and newer. "
-            "Use the legacy media_build workflow only if you must support an older kernel."
-        )
+    return tuple(int(part) for part in match.groups())
 
 
-def ensure_packages():
+def install_variant(kernel=None):
+    kernel = kernel or running_kernel()
+    return "direct" if kernel_version(kernel) >= DIRECT_KERNEL_MIN else "legacy"
+
+
+def selected_install_variant():
+    kernel = running_kernel()
+    variant = install_variant(kernel)
+    if variant == "direct":
+        print(f"Detected kernel {kernel}; using the direct TBS package workflow.")
+    else:
+        print(f"Detected kernel {kernel}; using the legacy media_build workflow.")
+    return variant
+
+
+def ensure_packages(packages):
+    quoted = " ".join(shlex.quote(package) for package in packages)
+    run("sudo apt-get update")
+    run("sudo apt-get -y install " + quoted)
+
+
+def ensure_direct_packages():
     kernel = running_kernel()
     packages = [
         f"linux-headers-{kernel}",
@@ -126,8 +149,22 @@ def ensure_packages():
         "patchutils",
         "wget",
     ]
-    run("sudo apt-get update")
-    run("sudo apt-get -y install " + " ".join(packages))
+    ensure_packages(packages)
+
+
+def ensure_legacy_packages():
+    kernel = running_kernel()
+    packages = [
+        f"linux-headers-{kernel}",
+        "build-essential",
+        "dvb-apps",
+        "gcc",
+        "git",
+        "libproc-processtable-perl",
+        "patchutils",
+        "wget",
+    ]
+    ensure_packages(packages)
 
 
 def ensure_download(url, destination):
@@ -237,6 +274,18 @@ def canonical_module_name(module):
     return names[0] if names else module.replace("-", "_")
 
 
+def module_exists(module):
+    try:
+        return subprocess.run(
+            ["modinfo", module],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode == 0
+    except FileNotFoundError:
+        return False
+
+
 def detected_usb_ids():
     try:
         output = read_output(["lsusb"])
@@ -259,6 +308,13 @@ def has_tbs_pci_hardware():
     return re.search(rf"\b{TBS_PCI_VENDOR}:[0-9A-Fa-f]{{4}}\b", output) is not None
 
 
+def installed_pci_module():
+    for module in PCI_MODULE_CANDIDATES:
+        if module_exists(module):
+            return canonical_module_name(module)
+    return None
+
+
 def usb_module_matches_hardware(module, usb_ids):
     for alias in modinfo_field(module, "alias"):
         match = re.search(r"usb:v([0-9A-Fa-f]{4})p([0-9A-Fa-f]{4})", alias)
@@ -271,7 +327,13 @@ def detect_target_modules():
     modules = []
 
     if has_tbs_pci_hardware():
-        modules.extend(PPCI for PPCI in PCI_MODULES)
+        pci_module = installed_pci_module()
+        if not pci_module:
+            raise SystemExit(
+                "Detected TBS PCI hardware but could not find an installed TBS PCI runtime module. "
+                "Expected one of: " + ", ".join(PCI_MODULE_CANDIDATES)
+            )
+        modules.append(pci_module)
 
     usb_ids = detected_usb_ids()
     for module in USB_MODULES:
@@ -311,9 +373,65 @@ def verify_installation():
     run("find /dev/dvb -maxdepth 2 -type c | sort", check=False)
 
 
-def fresh_install(force_refresh_source=False):
-    ensure_supported_kernel()
-    ensure_packages()
+def remove_tree(path):
+    if path.exists():
+        run(f"sudo rm -rf {shlex.quote(str(path))}")
+
+
+def legacy_source_tree_exists():
+    return (
+        (LEGACY_MEDIA_BUILD_DIR / "Makefile").exists()
+        and (LEGACY_MEDIA_BUILD_DIR / "install.sh").exists()
+        and LEGACY_MEDIA_DIR.exists()
+    )
+
+
+def prepare_legacy_source_tree(force_refresh=False):
+    if force_refresh:
+        remove_tree(LEGACY_MEDIA_BUILD_DIR)
+        remove_tree(LEGACY_MEDIA_DIR)
+
+    if LEGACY_MEDIA_BUILD_DIR.exists():
+        print(f"Reusing existing source tree: {LEGACY_MEDIA_BUILD_DIR}")
+    else:
+        run(
+            "git clone "
+            + shlex.quote(LEGACY_MEDIA_BUILD_REPO)
+            + " "
+            + shlex.quote(str(LEGACY_MEDIA_BUILD_DIR))
+        )
+
+    if LEGACY_MEDIA_DIR.exists():
+        print(f"Reusing existing source tree: {LEGACY_MEDIA_DIR}")
+    else:
+        run(
+            "git clone --depth=1 --branch latest "
+            + shlex.quote(LEGACY_MEDIA_REPO)
+            + " "
+            + shlex.quote(str(LEGACY_MEDIA_DIR))
+        )
+
+    if not legacy_source_tree_exists():
+        raise SystemExit(
+            "Expected legacy media_build and linux_media trees were not created at "
+            f"{LEGACY_MEDIA_BUILD_DIR} and {LEGACY_MEDIA_DIR}"
+        )
+
+
+def build_legacy_source_tree():
+    if not legacy_source_tree_exists():
+        raise SystemExit(
+            f"Missing legacy source trees: {LEGACY_MEDIA_BUILD_DIR} and/or {LEGACY_MEDIA_DIR}"
+        )
+    run("make dir DIR=../media", cwd=LEGACY_MEDIA_BUILD_DIR)
+
+
+def install_legacy_source_tree():
+    run("./install.sh", cwd=LEGACY_MEDIA_BUILD_DIR)
+
+
+def direct_fresh_install(force_refresh_source=False):
+    ensure_direct_packages()
     extract_driver_tree(force_refresh=force_refresh_source)
     build_source_tree(clean=True)
     install_source_tree()
@@ -325,9 +443,21 @@ def fresh_install(force_refresh_source=False):
     print("TBS driver install completed.")
 
 
-def rebuild_existing_source():
-    ensure_supported_kernel()
-    ensure_packages()
+def legacy_fresh_install(force_refresh_source=False):
+    ensure_legacy_packages()
+    prepare_legacy_source_tree(force_refresh=force_refresh_source)
+    build_legacy_source_tree()
+    install_legacy_source_tree()
+    install_firmware()
+    modules = detect_target_modules()
+    load_driver_modules(modules)
+    enable_autoload(modules)
+    verify_installation()
+    print("TBS driver install completed.")
+
+
+def direct_rebuild_existing_source():
+    ensure_direct_packages()
     if not source_tree_exists():
         raise SystemExit(
             f"Expected existing source tree at {SOURCE_DIR}. "
@@ -342,3 +472,38 @@ def rebuild_existing_source():
     enable_autoload(modules)
     verify_installation()
     print("TBS driver rebuild completed.")
+
+
+def legacy_rebuild_existing_source():
+    ensure_legacy_packages()
+    if not legacy_source_tree_exists():
+        raise SystemExit(
+            "Expected existing legacy source trees at "
+            f"{LEGACY_MEDIA_BUILD_DIR} and {LEGACY_MEDIA_DIR}. "
+            "Run ./install first."
+        )
+    build_legacy_source_tree()
+    install_legacy_source_tree()
+    if FIRMWARE_ARCHIVE.exists():
+        install_firmware()
+    modules = detect_target_modules()
+    load_driver_modules(modules)
+    enable_autoload(modules)
+    verify_installation()
+    print("TBS driver rebuild completed.")
+
+
+def fresh_install(force_refresh_source=False):
+    variant = selected_install_variant()
+    if variant == "direct":
+        direct_fresh_install(force_refresh_source=force_refresh_source)
+    else:
+        legacy_fresh_install(force_refresh_source=force_refresh_source)
+
+
+def rebuild_existing_source():
+    variant = selected_install_variant()
+    if variant == "direct":
+        direct_rebuild_existing_source()
+    else:
+        legacy_rebuild_existing_source()
