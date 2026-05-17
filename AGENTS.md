@@ -16,13 +16,13 @@ Keep the installer selecting between the two known-good paths:
 The maintained entry points are:
 
 - `install`
-- `install_reuse_tree`
-- `install_wo_fetch`
 - `tbs_install_lib.py`
+- `old/install_reuse_tree`
+- `old/install_wo_fetch`
 
 Historical reference only:
 
-- `install_legacy_bash`
+- `old/install_legacy_bash`
 
 `tbs_install_lib.py` is the real implementation. The other scripts are thin entry points.
 
