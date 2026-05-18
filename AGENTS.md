@@ -34,9 +34,9 @@ The scripts currently:
 - choose the direct TBS package for Linux `6.8+` and the legacy `media_build` / `linux_media` flow for older kernels
 - on the direct path, download or reuse the direct TBS source tarball, extract it into `tbs_install_drivers_from_TBS`, rewrite the `Makefile` to a satellite-focused `MODDEFS` allowlist, build it, and run `sudo make install`
 - on the legacy path, clone or reuse sibling `media_build` and `media` trees,
-  prepare the backport tree via `make dir DIR=../media`, apply backports,
-  patch generated kernel API compatibility issues, build through the running
-  kernel's Kbuild tree, and install with `modules_install`
+  prepare the generated tree via `make dir DIR=../media`, patch generated
+  kernel API compatibility issues, build through the running kernel's Kbuild
+  tree, and install with `modules_install`
 - install firmware
 - detect the matching TBS PCI/USB module for the connected hardware
 - load the detected module(s)

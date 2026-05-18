@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import re
+import os
 import shlex
 import shutil
 import subprocess
@@ -130,6 +131,13 @@ def install_variant(kernel=None, pci_output=None):
 
 
 def selected_install_variant():
+    if os.geteuid() == 0:
+        raise SystemExit(
+            "Do not run this installer with sudo. Run it as the normal user; "
+            "the script invokes sudo only for package installation, module "
+            "installation, firmware installation, and module loading."
+        )
+
     kernel = running_kernel()
     pci_output = pci_hardware_output()
     variant = install_variant(kernel, pci_output=pci_output)
@@ -599,10 +607,6 @@ def apply_legacy_kernel_compat_patches():
             patch_file_once(path, old, new, description)
 
 
-def apply_legacy_backport_patches():
-    run("make -C linux apply_patches", cwd=LEGACY_MEDIA_BUILD_DIR)
-
-
 def build_legacy_modules():
     kernel = running_kernel()
     v4l_dir = shlex.quote(str(LEGACY_MEDIA_BUILD_DIR / "v4l"))
@@ -615,7 +619,6 @@ def build_legacy_source_tree():
             f"Missing legacy source trees: {LEGACY_MEDIA_BUILD_DIR} and/or {LEGACY_MEDIA_DIR}"
         )
     run("make dir DIR=../media", cwd=LEGACY_MEDIA_BUILD_DIR)
-    apply_legacy_backport_patches()
     apply_legacy_kernel_compat_patches()
     build_legacy_modules()
 

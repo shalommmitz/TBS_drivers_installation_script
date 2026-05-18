@@ -42,7 +42,9 @@ The narrowed build list is intended to keep the install focused on TBS satellite
 
 PCI detection checks verbose PCI IDs, including subsystem IDs. This covers TBS cards that show the bridge chip as the primary PCI device, for example Philips/NXP SAA7160 `[1131:7160]`, while the TBS identity is exposed as a subsystem vendor such as `[6985:0002]`. PCI runtime module selection is alias-based, so an installed `tbsecp3` module is not chosen for SAA716x hardware unless its PCI aliases actually match.
 
-On legacy `media_build` builds, the script patches the generated `v4l/ccs-core.c` source after backports are applied when the running kernel exposes the one-argument `pm_runtime_get_if_active(struct device *dev)` API. This keeps newer Ubuntu kernels from failing on older generated media source that still calls `pm_runtime_get_if_active(&client->dev, true)`.
+Run the installer as the normal user, not with `sudo`. The script invokes `sudo` internally only for package installation, module installation, firmware installation, and module loading.
+
+On legacy `media_build` builds, the script patches the generated `v4l/ccs-core.c` source after `make dir DIR=../media` prepares the generated tree when the running kernel exposes the one-argument `pm_runtime_get_if_active(struct device *dev)` API. This keeps newer Ubuntu kernels from failing on older generated media source that still calls `pm_runtime_get_if_active(&client->dev, true)`.
 
 When switching from the direct-package PCI driver to the legacy SAA716x driver, the script unloads a stale `tbsecp3` stack first. Otherwise the old in-memory `dvb_core` module can have incompatible symbol versions and make `saa716x_core` fail with `Invalid argument`.
 
