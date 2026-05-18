@@ -27,7 +27,10 @@ FIRMWARE_ARCHIVE = SCRIPT_DIR / "tbs-tuner-firmwares_v1.0.tar.bz2"
 FIRMWARE_DIR = Path("/lib/firmware")
 
 MODULE_LOAD_CONF = Path("/etc/modules-load.d/tbs.conf")
-TBS_PCI_VENDOR = "544d"
+# Some TBS PCIe cards expose only the bridge chip as the primary PCI device,
+# for example Philips/NXP SAA7160 [1131:7160], and identify TBS through the
+# subsystem vendor instead.
+TBS_PCI_VENDOR_IDS = {"544d", "6985"}
 PCI_MODULE_CANDIDATES = ["tbsecp3", "saa716x_tbs-dvb", "saa716x_tbs_dvb"]
 USB_MODULES = [
     "dvb-usb-tbsqbox",
@@ -300,12 +303,29 @@ def detected_usb_ids():
     return usb_ids
 
 
-def has_tbs_pci_hardware():
+def detected_pci_ids(output):
+    return {
+        (match.group(1).lower(), match.group(2).lower())
+        for match in re.finditer(
+            r"(?:\[|\s)([0-9A-Fa-f]{4}):([0-9A-Fa-f]{4})(?:\]|\b)",
+            output,
+        )
+    }
+
+
+def pci_hardware_output():
     try:
-        output = read_output(["lspci", "-n"])
+        return read_output(["lspci", "-nn", "-v"])
     except (FileNotFoundError, subprocess.CalledProcessError):
-        return False
-    return re.search(rf"\b{TBS_PCI_VENDOR}:[0-9A-Fa-f]{{4}}\b", output) is not None
+        try:
+            return read_output(["lspci", "-n"])
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            return ""
+
+
+def has_tbs_pci_hardware():
+    pci_ids = detected_pci_ids(pci_hardware_output())
+    return any(vendor in TBS_PCI_VENDOR_IDS for vendor, _device in pci_ids)
 
 
 def installed_pci_module():

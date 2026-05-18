@@ -37,6 +37,8 @@ The main scripts detect the matching TBS runtime module for the connected hardwa
 
 The narrowed build list is intended to keep the install focused on TBS satellite-capable PCIe cards and USB boxes instead of compiling the full mixed terrestrial/cable/device set from the upstream tarball. Shared frontend and tuner helpers that those TBS satellite devices depend on are still built.
 
+PCI detection checks verbose PCI IDs, including subsystem IDs. This covers TBS cards that show the bridge chip as the primary PCI device, for example Philips/NXP SAA7160 `[1131:7160]`, while the TBS identity is exposed as a subsystem vendor such as `[6985:0002]`.
+
 The autoload configuration is no longer hardcoded to `tbsecp3`. On PCI systems that module may be correct, but USB systems need their matching `dvb-usb-*` driver instead, for example `dvb_usb_tbs5931` on a TBS 5931 host.
 
 The historical `install_legacy_bash` script is left in place only as reference.
