@@ -44,7 +44,7 @@ PCI detection checks verbose PCI IDs, including subsystem IDs. This covers TBS c
 
 Run the installer as the normal user, not with `sudo`. The script invokes `sudo` internally only for package installation, module installation, firmware installation, and module loading.
 
-On legacy `media_build` builds, the script patches the generated `v4l/ccs-core.c` source after `make dir DIR=../media` prepares the generated tree when the running kernel exposes the one-argument `pm_runtime_get_if_active(struct device *dev)` API. This keeps newer Ubuntu kernels from failing on older generated media source that still calls `pm_runtime_get_if_active(&client->dev, true)`.
+On legacy `media_build` builds, the script lets media_build initialize the generated `v4l` tree and then patches `v4l/ccs-core.c` when the running kernel exposes the one-argument `pm_runtime_get_if_active(struct device *dev)` API. This keeps newer Ubuntu kernels from failing on older generated media source that still calls `pm_runtime_get_if_active(&client->dev, true)`.
 
 When switching from the direct-package PCI driver to the legacy SAA716x driver, the script unloads a stale `tbsecp3` stack first. Otherwise the old in-memory `dvb_core` module can have incompatible symbol versions and make `saa716x_core` fail with `Invalid argument`.
 

@@ -608,6 +608,9 @@ def apply_legacy_kernel_compat_patches():
 
 
 def build_legacy_modules():
+    run("make -j$(nproc)", cwd=LEGACY_MEDIA_BUILD_DIR, check=False)
+    apply_legacy_kernel_compat_patches()
+
     kernel = running_kernel()
     v4l_dir = shlex.quote(str(LEGACY_MEDIA_BUILD_DIR / "v4l"))
     run(f"make -C /lib/modules/{kernel}/build M={v4l_dir} -j$(nproc) modules")
@@ -619,7 +622,6 @@ def build_legacy_source_tree():
             f"Missing legacy source trees: {LEGACY_MEDIA_BUILD_DIR} and/or {LEGACY_MEDIA_DIR}"
         )
     run("make dir DIR=../media", cwd=LEGACY_MEDIA_BUILD_DIR)
-    apply_legacy_kernel_compat_patches()
     build_legacy_modules()
 
 
