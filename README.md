@@ -30,7 +30,7 @@ For most `6.8+` kernels, the current scripts no longer use the older `media_buil
 The main scripts detect the matching TBS runtime module for the connected hardware after either build path completes:
 
 - `install`
-  Full fresh path. On Linux `6.8+`, re-extracts the direct TBS source archive into `tbs_install_drivers_from_TBS`, rebuilds, reinstalls, installs firmware, detects the matching TBS PCI/USB module, loads it, and writes `/etc/modules-load.d/tbs.conf`. On older kernels, refreshes the sibling `media_build` and `media` trees, builds and installs via the legacy workflow, then performs the same firmware, module-load, and autoload steps.
+  Full fresh path. On Linux `6.8+`, re-extracts the direct TBS source archive into `tbs_install_drivers_from_TBS`, rebuilds, reinstalls, installs firmware, detects the matching TBS PCI/USB module, loads it, and writes `/etc/modules-load.d/tbs.conf`. On older kernels and SAA716x PCI systems, refreshes the sibling `media_build` and `media` trees, prepares the backported `v4l` tree, applies local compatibility patches, builds modules through the running kernel's Kbuild tree, installs them with `modules_install`, then performs the same firmware, module-load, and autoload steps.
 - `install_reuse_tree`
   Reuses existing source trees when possible. On Linux `6.8+`, downloads `tbsdvb_v1013.tar.bz2`, extracts it to a sibling folder named `tbs_install_drivers_from_TBS` if needed, rewrites the extracted `Makefile` to a satellite-focused TBS module list, builds it for the running kernel, installs firmware, runs `depmod`, detects the matching TBS PCI/USB module, loads it, and writes `/etc/modules-load.d/tbs.conf`. On older kernels, reuses the sibling `media_build` and `media` trees if they are already present, otherwise clones them before building and installing.
 - `install_wo_fetch`
@@ -41,6 +41,10 @@ The main scripts detect the matching TBS runtime module for the connected hardwa
 The narrowed build list is intended to keep the install focused on TBS satellite-capable PCIe cards and USB boxes instead of compiling the full mixed terrestrial/cable/device set from the upstream tarball. Shared frontend and tuner helpers that those TBS satellite devices depend on are still built.
 
 PCI detection checks verbose PCI IDs, including subsystem IDs. This covers TBS cards that show the bridge chip as the primary PCI device, for example Philips/NXP SAA7160 `[1131:7160]`, while the TBS identity is exposed as a subsystem vendor such as `[6985:0002]`. PCI runtime module selection is alias-based, so an installed `tbsecp3` module is not chosen for SAA716x hardware unless its PCI aliases actually match.
+
+On legacy `media_build` builds, the script patches the generated `v4l/ccs-core.c` source after backports are applied when the running kernel exposes the one-argument `pm_runtime_get_if_active(struct device *dev)` API. This keeps newer Ubuntu kernels from failing on older generated media source that still calls `pm_runtime_get_if_active(&client->dev, true)`.
+
+When switching from the direct-package PCI driver to the legacy SAA716x driver, the script unloads a stale `tbsecp3` stack first. Otherwise the old in-memory `dvb_core` module can have incompatible symbol versions and make `saa716x_core` fail with `Invalid argument`.
 
 The autoload configuration is no longer hardcoded to `tbsecp3`. On PCI systems that module may be correct, but USB systems need their matching `dvb-usb-*` driver instead, for example `dvb_usb_tbs5931` on a TBS 5931 host.
 

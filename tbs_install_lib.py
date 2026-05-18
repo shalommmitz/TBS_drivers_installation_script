@@ -485,8 +485,26 @@ def detect_target_modules():
 
 
 def load_driver_modules(modules):
+    unload_conflicting_driver_modules(modules)
     for module in modules:
         run(f"sudo modprobe {module}")
+
+
+def unload_conflicting_driver_modules(modules):
+    module_set = set(modules)
+    if "saa716x_tbs_dvb" in module_set:
+        # A previous direct-package run can leave tbsecp3 and its helper stack
+        # loaded. That stale dvb_core instance has different symbol versions
+        # from the legacy media_build modules and makes saa716x_core fail with
+        # "Unknown symbol ... (err -22)" / modprobe "Invalid argument".
+        stale_modules = [
+            "tbsecp3",
+            "gx1133",
+            "tas2101",
+            "dvb_core",
+            "mc",
+        ]
+        run("sudo modprobe -r " + " ".join(stale_modules), check=False)
 
 
 def enable_autoload(modules):
@@ -544,16 +562,69 @@ def prepare_legacy_source_tree(force_refresh=False):
         )
 
 
+def pm_runtime_get_if_active_uses_one_arg():
+    header = Path("/lib/modules") / running_kernel() / "build/include/linux/pm_runtime.h"
+    try:
+        contents = header.read_text()
+    except OSError:
+        return False
+
+    match = re.search(r"pm_runtime_get_if_active\s*\(([^;]*)\)", contents, flags=re.S)
+    if not match:
+        return False
+    return "," not in match.group(1)
+
+
+def patch_file_once(path, old, new, description):
+    if not path.exists():
+        return
+
+    contents = path.read_text()
+    if old not in contents:
+        return
+
+    path.write_text(contents.replace(old, new))
+    print(f"Applied legacy kernel compatibility patch to {path}: {description}.")
+
+
+def apply_legacy_kernel_compat_patches():
+    if pm_runtime_get_if_active_uses_one_arg():
+        old = "pm_runtime_get_if_active(&client->dev, true)"
+        new = "pm_runtime_get_if_active(&client->dev)"
+        description = "pm_runtime_get_if_active has one argument on this kernel"
+        for path in (
+            LEGACY_MEDIA_DIR / "drivers/media/i2c/ccs/ccs-core.c",
+            LEGACY_MEDIA_BUILD_DIR / "v4l/ccs-core.c",
+        ):
+            patch_file_once(path, old, new, description)
+
+
+def apply_legacy_backport_patches():
+    run("make -C linux apply_patches", cwd=LEGACY_MEDIA_BUILD_DIR)
+
+
+def build_legacy_modules():
+    kernel = running_kernel()
+    v4l_dir = shlex.quote(str(LEGACY_MEDIA_BUILD_DIR / "v4l"))
+    run(f"make -C /lib/modules/{kernel}/build M={v4l_dir} -j$(nproc) modules")
+
+
 def build_legacy_source_tree():
     if not legacy_source_tree_exists():
         raise SystemExit(
             f"Missing legacy source trees: {LEGACY_MEDIA_BUILD_DIR} and/or {LEGACY_MEDIA_DIR}"
         )
     run("make dir DIR=../media", cwd=LEGACY_MEDIA_BUILD_DIR)
+    apply_legacy_backport_patches()
+    apply_legacy_kernel_compat_patches()
+    build_legacy_modules()
 
 
 def install_legacy_source_tree():
-    run("./install.sh", cwd=LEGACY_MEDIA_BUILD_DIR)
+    kernel = running_kernel()
+    v4l_dir = shlex.quote(str(LEGACY_MEDIA_BUILD_DIR / "v4l"))
+    run(f"sudo make -C /lib/modules/{kernel}/build M={v4l_dir} modules_install")
+    run("sudo depmod -a")
 
 
 def direct_fresh_install(force_refresh_source=False):

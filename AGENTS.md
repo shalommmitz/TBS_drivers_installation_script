@@ -33,7 +33,10 @@ The scripts currently:
 - install the matching kernel headers and build tools
 - choose the direct TBS package for Linux `6.8+` and the legacy `media_build` / `linux_media` flow for older kernels
 - on the direct path, download or reuse the direct TBS source tarball, extract it into `tbs_install_drivers_from_TBS`, rewrite the `Makefile` to a satellite-focused `MODDEFS` allowlist, build it, and run `sudo make install`
-- on the legacy path, clone or reuse sibling `media_build` and `media` trees, prepare the backport tree via `make dir DIR=../media`, and run `./install.sh`
+- on the legacy path, clone or reuse sibling `media_build` and `media` trees,
+  prepare the backport tree via `make dir DIR=../media`, apply backports,
+  patch generated kernel API compatibility issues, build through the running
+  kernel's Kbuild tree, and install with `modules_install`
 - install firmware
 - detect the matching TBS PCI/USB module for the connected hardware
 - load the detected module(s)
@@ -87,6 +90,9 @@ If you change runtime module detection, verify both PCI-only and USB-only hosts.
 - `make clean` only cleans the extracted source tree; the installed module is updated by `sudo make install`.
 - `modules_install` may print a `System.map` warning. Follow with `sudo depmod -a`.
 - Success means the installed module under `/lib/modules/<running-kernel>/updates/...` matches the running kernel, not just the rebuilt source tree.
+- Newer kernels may expose `pm_runtime_get_if_active(struct device *dev)` with
+  one argument. The legacy build patches generated `v4l/ccs-core.c` after
+  `make dir` when the media source still calls it with a second `true` argument.
 
 ## Verification Checklist
 
