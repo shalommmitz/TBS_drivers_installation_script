@@ -8,6 +8,8 @@ Keep the installer selecting between the two known-good paths:
 
 - direct TBS driver package: `tbsdvb_v1013.tar.bz2` for Linux `6.8+`
 - legacy `media_build` / `linux_media` workflow for older kernels
+- legacy `media_build` / `linux_media` workflow for TBS SAA716x PCI cards,
+  because the direct TBS package does not include `saa716x_tbs-dvb`
 - load the hardware-matching top-level TBS runtime module
 - scope: TBS satellite-capable PCIe and USB devices only on the direct-package path
 
@@ -39,7 +41,7 @@ The scripts currently:
 
 ## Do Not Reintroduce
 
-For Linux `6.8+`, do not switch this folder back to the older `media_build` / `linux_media` flow unless the user explicitly asks for that legacy path.
+For Linux `6.8+`, do not switch this folder back to the older `media_build` / `linux_media` flow unless the user explicitly asks for that legacy path, or the detected hardware is a TBS SAA716x PCI card that requires `saa716x_tbs-dvb`.
 
 For older kernels, do not force the direct-package path when the script has already selected the legacy workflow.
 

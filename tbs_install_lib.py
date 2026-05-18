@@ -30,8 +30,11 @@ MODULE_LOAD_CONF = Path("/etc/modules-load.d/tbs.conf")
 # Some TBS PCIe cards expose only the bridge chip as the primary PCI device,
 # for example Philips/NXP SAA7160 [1131:7160], and identify TBS through the
 # subsystem vendor instead.
-TBS_PCI_VENDOR_IDS = {"544d", "6985"}
-PCI_MODULE_CANDIDATES = ["tbsecp3", "saa716x_tbs-dvb", "saa716x_tbs_dvb"]
+TBS_PCI_VENDOR_IDS = {"544d"}
+TBS_PCI_SUBSYSTEM_VENDOR_IDS = {"6985"}
+SAA716X_TBS_PCI_IDS = {("1131", "7160")}
+SAA716X_PCI_MODULE_CANDIDATES = ["saa716x_tbs-dvb", "saa716x_tbs_dvb"]
+PCI_MODULE_CANDIDATES = ["tbsecp3"] + SAA716X_PCI_MODULE_CANDIDATES
 USB_MODULES = [
     "dvb-usb-tbsqbox",
     "dvb-usb-tbsqbox2",
@@ -119,15 +122,23 @@ def kernel_version(kernel=None):
     return tuple(int(part) for part in match.groups())
 
 
-def install_variant(kernel=None):
+def install_variant(kernel=None, pci_output=None):
     kernel = kernel or running_kernel()
+    if has_saa716x_tbs_pci_hardware(pci_output):
+        return "legacy"
     return "direct" if kernel_version(kernel) >= DIRECT_KERNEL_MIN else "legacy"
 
 
 def selected_install_variant():
     kernel = running_kernel()
-    variant = install_variant(kernel)
-    if variant == "direct":
+    pci_output = pci_hardware_output()
+    variant = install_variant(kernel, pci_output=pci_output)
+    if has_saa716x_tbs_pci_hardware(pci_output):
+        print(
+            f"Detected kernel {kernel} with TBS SAA716x PCI hardware; "
+            "using the legacy media_build workflow for saa716x_tbs-dvb support."
+        )
+    elif variant == "direct":
         print(f"Detected kernel {kernel}; using the direct TBS package workflow.")
     else:
         print(f"Detected kernel {kernel}; using the legacy media_build workflow.")
@@ -313,6 +324,40 @@ def detected_pci_ids(output):
     }
 
 
+PCI_SLOT_RE = re.compile(
+    r"^(?:[0-9A-Fa-f]{4}:)?[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\.[0-9A-Fa-f]\b"
+)
+PCI_ID_RE = re.compile(r"(?:\[|\s)([0-9A-Fa-f]{4}):([0-9A-Fa-f]{4})(?:\]|\b)")
+PCI_ALIAS_RE = re.compile(
+    r"^pci:v([0-9A-Fa-f]{8}|\*)d([0-9A-Fa-f]{8}|\*)"
+    r"sv([0-9A-Fa-f]{8}|\*)sd([0-9A-Fa-f]{8}|\*)"
+)
+
+
+def detected_pci_devices(output):
+    devices = []
+    current = None
+
+    for line in output.splitlines():
+        ids = [(match.group(1).lower(), match.group(2).lower()) for match in PCI_ID_RE.finditer(line)]
+        if PCI_SLOT_RE.search(line):
+            if ids:
+                vendor, device = ids[-1]
+                current = {
+                    "vendor": vendor,
+                    "device": device,
+                    "subvendor": None,
+                    "subdevice": None,
+                }
+                devices.append(current)
+            else:
+                current = None
+        elif current and line.lstrip().startswith("Subsystem:") and ids:
+            current["subvendor"], current["subdevice"] = ids[-1]
+
+    return devices
+
+
 def pci_hardware_output():
     try:
         return read_output(["lspci", "-nn", "-v"])
@@ -323,14 +368,73 @@ def pci_hardware_output():
             return ""
 
 
-def has_tbs_pci_hardware():
-    pci_ids = detected_pci_ids(pci_hardware_output())
-    return any(vendor in TBS_PCI_VENDOR_IDS for vendor, _device in pci_ids)
+def is_tbs_pci_device(device):
+    return (
+        device["vendor"] in TBS_PCI_VENDOR_IDS
+        or device["subvendor"] in TBS_PCI_SUBSYSTEM_VENDOR_IDS
+    )
 
 
-def installed_pci_module():
+def is_saa716x_tbs_pci_device(device):
+    return (
+        (device["vendor"], device["device"]) in SAA716X_TBS_PCI_IDS
+        and device["subvendor"] in TBS_PCI_SUBSYSTEM_VENDOR_IDS
+    )
+
+
+def has_tbs_pci_hardware(pci_output=None):
+    pci_output = pci_output if pci_output is not None else pci_hardware_output()
+    return any(is_tbs_pci_device(device) for device in detected_pci_devices(pci_output))
+
+
+def has_saa716x_tbs_pci_hardware(pci_output=None):
+    pci_output = pci_output if pci_output is not None else pci_hardware_output()
+    return any(
+        is_saa716x_tbs_pci_device(device) for device in detected_pci_devices(pci_output)
+    )
+
+
+def pci_alias_component_matches(pattern, value):
+    pattern = pattern.lower()
+    if pattern == "*":
+        return True
+    if value is None:
+        return False
+    value = value.lower().zfill(8)
+    if "*" not in pattern:
+        return value == pattern.zfill(8)
+    regex = "^" + re.escape(pattern).replace(r"\*", "[0-9a-f]*") + "$"
+    return re.fullmatch(regex, value) is not None
+
+
+def pci_alias_matches_device(alias, device):
+    match = PCI_ALIAS_RE.search(alias)
+    if not match:
+        return False
+
+    return (
+        pci_alias_component_matches(match.group(1), device["vendor"])
+        and pci_alias_component_matches(match.group(2), device["device"])
+        and pci_alias_component_matches(match.group(3), device["subvendor"])
+        and pci_alias_component_matches(match.group(4), device["subdevice"])
+    )
+
+
+def pci_module_matches_hardware(module, pci_devices):
+    return any(
+        pci_alias_matches_device(alias, device)
+        for alias in modinfo_field(module, "alias")
+        for device in pci_devices
+    )
+
+
+def installed_pci_module(pci_output=None):
+    pci_output = pci_output if pci_output is not None else pci_hardware_output()
+    pci_devices = [
+        device for device in detected_pci_devices(pci_output) if is_tbs_pci_device(device)
+    ]
     for module in PCI_MODULE_CANDIDATES:
-        if module_exists(module):
+        if module_exists(module) and pci_module_matches_hardware(module, pci_devices):
             return canonical_module_name(module)
     return None
 
@@ -345,12 +449,14 @@ def usb_module_matches_hardware(module, usb_ids):
 
 def detect_target_modules():
     modules = []
+    pci_output = pci_hardware_output()
 
-    if has_tbs_pci_hardware():
-        pci_module = installed_pci_module()
+    if has_tbs_pci_hardware(pci_output):
+        pci_module = installed_pci_module(pci_output)
         if not pci_module:
             raise SystemExit(
-                "Detected TBS PCI hardware but could not find an installed TBS PCI runtime module. "
+                "Detected TBS PCI hardware but could not find an installed TBS PCI runtime "
+                "module matching its PCI alias. "
                 "Expected one of: " + ", ".join(PCI_MODULE_CANDIDATES)
             )
         modules.append(pci_module)

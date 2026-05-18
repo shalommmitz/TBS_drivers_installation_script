@@ -21,8 +21,11 @@ The maintained entry points now auto-select the installation variant from the ru
 
 - Linux `6.8+`: direct TBS package `tbsdvb_v1013.tar.bz2`
 - older kernels: legacy `media_build` / `linux_media` workflow
+- TBS SAA716x PCI cards, such as TBS6985 on Philips/NXP SAA7160
+  `[1131:7160]`, use the legacy workflow even on `6.8+` because the direct
+  package does not include `saa716x_tbs-dvb`
 
-For `6.8+` kernels, the current scripts no longer use the older `media_build` / `linux_media` flow. That path produced broken installs on Ubuntu 24.04 and left stale `saa716x_tbs-dvb` assumptions in place. On older kernels the scripts fall back to that legacy workflow automatically.
+For most `6.8+` kernels, the current scripts no longer use the older `media_build` / `linux_media` flow. That path produced broken installs on Ubuntu 24.04 and left stale `saa716x_tbs-dvb` assumptions in place. SAA716x-based TBS PCI cards are the exception because the direct TBS package does not ship that runtime driver. On older kernels the scripts fall back to the legacy workflow automatically.
 
 The main scripts detect the matching TBS runtime module for the connected hardware after either build path completes:
 
@@ -37,7 +40,7 @@ The main scripts detect the matching TBS runtime module for the connected hardwa
 
 The narrowed build list is intended to keep the install focused on TBS satellite-capable PCIe cards and USB boxes instead of compiling the full mixed terrestrial/cable/device set from the upstream tarball. Shared frontend and tuner helpers that those TBS satellite devices depend on are still built.
 
-PCI detection checks verbose PCI IDs, including subsystem IDs. This covers TBS cards that show the bridge chip as the primary PCI device, for example Philips/NXP SAA7160 `[1131:7160]`, while the TBS identity is exposed as a subsystem vendor such as `[6985:0002]`.
+PCI detection checks verbose PCI IDs, including subsystem IDs. This covers TBS cards that show the bridge chip as the primary PCI device, for example Philips/NXP SAA7160 `[1131:7160]`, while the TBS identity is exposed as a subsystem vendor such as `[6985:0002]`. PCI runtime module selection is alias-based, so an installed `tbsecp3` module is not chosen for SAA716x hardware unless its PCI aliases actually match.
 
 The autoload configuration is no longer hardcoded to `tbsecp3`. On PCI systems that module may be correct, but USB systems need their matching `dvb-usb-*` driver instead, for example `dvb_usb_tbs5931` on a TBS 5931 host.
 
