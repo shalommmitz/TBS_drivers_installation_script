@@ -36,6 +36,11 @@ TBS_PCI_SUBSYSTEM_VENDOR_IDS = {"6985"}
 SAA716X_TBS_PCI_IDS = {("1131", "7160")}
 SAA716X_PCI_MODULE_CANDIDATES = ["saa716x_tbs-dvb", "saa716x_tbs_dvb"]
 PCI_MODULE_CANDIDATES = ["tbsecp3"] + SAA716X_PCI_MODULE_CANDIDATES
+PCI_FRONTEND_HELPERS = {
+    # TBS 6909 / 8 tuners over one satellite input. tbsecp3 uses dvb_attach()
+    # for this frontend, so modprobe does not pull it in as a hard dependency.
+    ("6909", "0001"): ["mxl58x"],
+}
 USB_MODULES = [
     "dvb-usb-tbsqbox",
     "dvb-usb-tbsqbox2",
@@ -447,6 +452,17 @@ def installed_pci_module(pci_output=None):
     return None
 
 
+def pci_frontend_helper_modules(pci_output=None):
+    pci_output = pci_output if pci_output is not None else pci_hardware_output()
+    modules = []
+    for device in detected_pci_devices(pci_output):
+        if not is_tbs_pci_device(device):
+            continue
+        key = (device["subvendor"], device["subdevice"])
+        modules.extend(PCI_FRONTEND_HELPERS.get(key, []))
+    return [module for module in modules if module_exists(module)]
+
+
 def usb_module_matches_hardware(module, usb_ids):
     for alias in modinfo_field(module, "alias"):
         match = re.search(r"usb:v([0-9A-Fa-f]{4})p([0-9A-Fa-f]{4})", alias)
@@ -467,6 +483,7 @@ def detect_target_modules():
                 "module matching its PCI alias. "
                 "Expected one of: " + ", ".join(PCI_MODULE_CANDIDATES)
             )
+        modules.extend(pci_frontend_helper_modules(pci_output))
         modules.append(pci_module)
 
     usb_ids = detected_usb_ids()

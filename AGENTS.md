@@ -19,11 +19,11 @@ The maintained entry points are:
 
 - `install`
 - `tbs_install_lib.py`
-- `old/install_reuse_tree`
-- `old/install_wo_fetch`
 
 Historical reference only:
 
+- `old/install_reuse_tree`
+- `old/install_wo_fetch`
 - `old/install_legacy_bash`
 
 `tbs_install_lib.py` is the real implementation. The other scripts are thin entry points.
@@ -53,6 +53,8 @@ Do not assume the working module is `saa716x_tbs-dvb` or `tbsecp3`. The correct 
 
 Do not assume `tbsecp3` is always the correct runtime module. That is correct for supported TBS PCIe cards, but USB devices need their matching `dvb-usb-*` module.
 
+Do not assume a PCI bridge module is sufficient by itself. Some TBS PCI cards use `dvb_attach()` for frontend helpers that are not hard module dependencies. For example, TBS 6909 `6909:0001` needs `mxl58x` loaded before `tbsecp3`, otherwise the PCI driver can bind with no `/dev/dvb` nodes.
+
 Do not expand the build back to the full mixed upstream module set unless the user explicitly wants that.
 
 ## Build Scope
@@ -65,6 +67,7 @@ Look for:
 
 - `SATELLITE_MODDEFS`
 - `restrict_makefile_to_satellite_only()`
+- `PCI_FRONTEND_HELPERS`
 - `detect_target_modules()`
 
 That allowlist intentionally keeps:
@@ -115,7 +118,7 @@ Healthy state looks like:
 
 Prefer changing `tbs_install_lib.py` instead of duplicating logic across entry-point scripts.
 
-Keep historical files such as `install_legacy_bash` and the Ubuntu 24.04 fix notes as reference unless the user explicitly asks to clean them up.
+Keep historical files under `old/` and the Ubuntu 24.04 fix notes as reference unless the user explicitly asks to clean them up.
 
 If you update behavior, also update:
 
