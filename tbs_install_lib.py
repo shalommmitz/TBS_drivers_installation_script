@@ -31,6 +31,7 @@ FIRMWARE_DIR = Path("/lib/firmware")
 MODULE_LOAD_CONF = Path("/etc/modules-load.d/tbs.conf")
 MODPROBE_CONF = Path("/etc/modprobe.d/tbs-dvb.conf")
 INITRAMFS_FIRMWARE_HOOK = Path("/etc/initramfs-tools/hooks/tbs-dvb-firmware")
+SYSTEMD_REPROBE_SERVICE = Path("/etc/systemd/system/tbs-dvb-reprobe.service")
 # Some TBS PCIe cards expose only the bridge chip as the primary PCI device,
 # for example Philips/NXP SAA7160 [1131:7160], and identify TBS through the
 # subsystem vendor instead.
@@ -614,6 +615,7 @@ def enable_modprobe_softdeps(modules):
         + lines,
     )
     enable_initramfs_firmware_hook(modules)
+    enable_reprobe_service(modules)
     refresh_initramfs_for_tbs_boot_config()
 
 
@@ -646,7 +648,10 @@ def enable_initramfs_firmware_hook(modules):
         lines.extend(
             [
                 f"if [ -e {firmware_path} ]; then",
-                f"    copy_file firmware {firmware_path}",
+                '    for target_dir in "$DESTDIR/lib/firmware" "$DESTDIR/usr/lib/firmware"; do',
+                "        mkdir -p \"$target_dir\"",
+                f"        cp -p {firmware_path} \"$target_dir/{firmware}\"",
+                "    done",
                 "fi",
             ]
         )
@@ -663,6 +668,62 @@ def refresh_initramfs_for_tbs_boot_config():
 
     kernel = shlex.quote(running_kernel())
     run(f"sudo update-initramfs -u -k {kernel}")
+
+
+def reprobe_service_lines(modules):
+    helper_modules = [
+        module
+        for module in modules
+        if module in PCI_FRONTEND_HELPER_MODULES
+    ]
+    bridge_modules = [
+        module
+        for module in modules
+        if module in PCI_BRIDGE_RUNTIME_MODULES
+    ]
+    if not helper_modules or not bridge_modules:
+        return []
+
+    lines = [
+        "[Unit]",
+        "Description=Reprobe TBS DVB PCI bridge after firmware is available",
+        "After=local-fs.target systemd-modules-load.service systemd-udev-settle.service",
+        "Wants=systemd-udev-settle.service",
+        "Before=multi-user.target",
+        "",
+        "[Service]",
+        "Type=oneshot",
+    ]
+    for module in helper_modules:
+        lines.append(f"ExecStart=/usr/sbin/modprobe {module}")
+    for module in reversed(bridge_modules):
+        lines.append(f"ExecStart=-/usr/sbin/modprobe -r {module}")
+    for module in helper_modules:
+        lines.append(f"ExecStart=/usr/sbin/modprobe {module}")
+    for module in bridge_modules:
+        lines.append(f"ExecStart=/usr/sbin/modprobe {module}")
+    lines.extend(
+        [
+            "ExecStart=/bin/sh -c '/usr/bin/udevadm settle || true; find /dev/dvb -maxdepth 2 -type c | grep -q .'",
+            "",
+            "[Install]",
+            "WantedBy=multi-user.target",
+        ]
+    )
+    return lines
+
+
+def enable_reprobe_service(modules):
+    lines = reprobe_service_lines(modules)
+    if not lines:
+        return
+    if not shutil.which("systemctl"):
+        print("systemctl not found; skipping TBS DVB reprobe service.")
+        return
+
+    write_root_config_lines(SYSTEMD_REPROBE_SERVICE, lines)
+    run("sudo systemctl daemon-reload")
+    run(f"sudo systemctl enable {SYSTEMD_REPROBE_SERVICE.name}")
 
 
 def dvb_character_devices():

@@ -46,6 +46,8 @@ The scripts currently:
   boot, for example copying `dvb-fe-mxl5xx.fw` for `mxl58x`
 - refresh the running kernel's initramfs after writing those soft dependencies,
   so early boot PCI coldplug sees the same module order
+- enable `tbs-dvb-reprobe.service` for PCI bridge-plus-helper cases where early
+  boot can still attach before firmware is usable
 - load the detected module(s)
 - unload and reload already-loaded detected PCI bridge module(s), so explicit
   frontend helpers are present before the bridge driver probes the card
@@ -70,6 +72,8 @@ Do not rely only on `/etc/modules-load.d/tbs.conf` for helper ordering on PCI ha
 Do not assume `/etc/modprobe.d/tbs-dvb.conf` is enough by itself after a change. On Ubuntu, early boot coldplug can happen from initramfs, so the installer must refresh the running kernel's initramfs after writing softdeps.
 
 Do not assume firmware under `/lib/firmware` is visible during early boot attach. TBS 6909 with `mxl58x` can fail all frontends with `Direct firmware load for dvb-fe-mxl5xx.fw failed with error -2` unless that firmware is copied into initramfs.
+
+Do not remove the `tbs-dvb-reprobe.service` fallback until reboot behavior is proven on the target hardware. The service exists because install-time reprobe works after the real root filesystem is available, while boot-time attach can fail before firmware access is ready.
 
 Do not expand the build back to the full mixed upstream module set unless the user explicitly wants that.
 

@@ -52,6 +52,8 @@ When the detected PCI bridge module is already loaded, the installer unloads and
 
 For reboot persistence, the installer also writes `/etc/modprobe.d/tbs-dvb.conf` soft dependencies when a PCI bridge needs explicit frontend helpers. For TBS 6909 this writes `softdep tbsecp3 pre: mxl58x`, so a PCI auto-probe of `tbsecp3` still loads `mxl58x` first. It also writes an initramfs-tools hook for `dvb-fe-mxl5xx.fw` and refreshes the running kernel's initramfs, because early boot frontend attach can happen before the root filesystem firmware directory is available.
 
+On systems where early boot still probes `tbsecp3` before the frontend firmware is usable, the installer enables `tbs-dvb-reprobe.service`. That one-shot service runs before `multi-user.target`, after local filesystems and udev settle, and reloads the PCI bridge with the frontend helper already loaded. This is intentionally limited to PCI bridge-plus-helper cases such as TBS 6909.
+
 The historical `old/install_legacy_bash` script is left in place only as reference.
 
 There is an alternative script at: https://cesbo.com/download/astra/scripts/drv-tbs.sh
