@@ -40,6 +40,8 @@ The scripts currently:
   install with `modules_install`
 - install firmware
 - detect the matching TBS PCI/USB module for the connected hardware
+- write `modprobe.d` soft dependencies when a PCI bridge needs explicit
+  frontend helpers, for example `softdep tbsecp3 pre: mxl58x`
 - load the detected module(s)
 - unload and reload already-loaded detected PCI bridge module(s), so explicit
   frontend helpers are present before the bridge driver probes the card
@@ -58,6 +60,8 @@ Do not assume `tbsecp3` is always the correct runtime module. That is correct fo
 Do not assume a PCI bridge module is sufficient by itself. Some TBS PCI cards use `dvb_attach()` for frontend helpers that are not hard module dependencies. For example, TBS 6909 `6909:0001` needs `mxl58x` loaded before `tbsecp3`, otherwise the PCI driver can bind with no `/dev/dvb` nodes.
 
 Do not treat an already-loaded PCI bridge module as proof that the device was initialized correctly. If the helper order changed, reload the bridge module so probe/attach runs again with the helper already present.
+
+Do not rely only on `/etc/modules-load.d/tbs.conf` for helper ordering on PCI hardware. PCI modalias auto-loading can request the bridge module independently, so helper ordering that must survive reboot belongs in `/etc/modprobe.d/tbs-dvb.conf` as a `softdep`.
 
 Do not expand the build back to the full mixed upstream module set unless the user explicitly wants that.
 

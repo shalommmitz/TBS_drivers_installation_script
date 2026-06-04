@@ -29,6 +29,7 @@ FIRMWARE_ARCHIVE = SCRIPT_DIR / "tbs-tuner-firmwares_v1.0.tar.bz2"
 FIRMWARE_DIR = Path("/lib/firmware")
 
 MODULE_LOAD_CONF = Path("/etc/modules-load.d/tbs.conf")
+MODPROBE_CONF = Path("/etc/modprobe.d/tbs-dvb.conf")
 # Some TBS PCIe cards expose only the bridge chip as the primary PCI device,
 # for example Philips/NXP SAA7160 [1131:7160], and identify TBS through the
 # subsystem vendor instead.
@@ -45,6 +46,11 @@ PCI_FRONTEND_HELPERS = {
     # TBS 6909 / 8 tuners over one satellite input. tbsecp3 uses dvb_attach()
     # for this frontend, so modprobe does not pull it in as a hard dependency.
     ("6909", "0001"): ["mxl58x"],
+}
+PCI_FRONTEND_HELPER_MODULES = {
+    module
+    for helpers in PCI_FRONTEND_HELPERS.values()
+    for module in helpers
 }
 USB_MODULES = [
     "dvb-usb-tbsqbox",
@@ -569,8 +575,40 @@ def unload_conflicting_driver_modules(modules):
 
 
 def enable_autoload(modules):
-    quoted = " ".join(shlex.quote(module) for module in modules)
-    run(f"printf '%s\\n' {quoted} | sudo tee {MODULE_LOAD_CONF} >/dev/null")
+    write_root_config_lines(MODULE_LOAD_CONF, modules)
+
+
+def write_root_config_lines(path, lines):
+    quoted = " ".join(shlex.quote(line) for line in lines)
+    run(f"printf '%s\\n' {quoted} | sudo tee {path} >/dev/null")
+
+
+def modprobe_softdep_lines(modules):
+    helper_modules = [
+        module
+        for module in modules
+        if module in PCI_FRONTEND_HELPER_MODULES
+    ]
+    if not helper_modules:
+        return []
+
+    return [
+        "softdep " + module + " pre: " + " ".join(helper_modules)
+        for module in modules
+        if module in PCI_BRIDGE_RUNTIME_MODULES
+    ]
+
+
+def enable_modprobe_softdeps(modules):
+    lines = modprobe_softdep_lines(modules)
+    if not lines:
+        return
+
+    write_root_config_lines(
+        MODPROBE_CONF,
+        ["# Managed by TBS DVB installer; keeps frontend helpers before PCI bridges."]
+        + lines,
+    )
 
 
 def dvb_character_devices():
@@ -719,6 +757,7 @@ def direct_fresh_install(force_refresh_source=False):
     install_source_tree()
     install_firmware()
     modules = detect_target_modules()
+    enable_modprobe_softdeps(modules)
     load_driver_modules(modules)
     enable_autoload(modules)
     verify_installation()
@@ -732,6 +771,7 @@ def legacy_fresh_install(force_refresh_source=False):
     install_legacy_source_tree()
     install_firmware()
     modules = detect_target_modules()
+    enable_modprobe_softdeps(modules)
     load_driver_modules(modules)
     enable_autoload(modules)
     verify_installation()
@@ -750,6 +790,7 @@ def direct_rebuild_existing_source():
     if FIRMWARE_ARCHIVE.exists():
         install_firmware()
     modules = detect_target_modules()
+    enable_modprobe_softdeps(modules)
     load_driver_modules(modules)
     enable_autoload(modules)
     verify_installation()
@@ -769,6 +810,7 @@ def legacy_rebuild_existing_source():
     if FIRMWARE_ARCHIVE.exists():
         install_firmware()
     modules = detect_target_modules()
+    enable_modprobe_softdeps(modules)
     load_driver_modules(modules)
     enable_autoload(modules)
     verify_installation()
