@@ -609,6 +609,16 @@ def enable_modprobe_softdeps(modules):
         ["# Managed by TBS DVB installer; keeps frontend helpers before PCI bridges."]
         + lines,
     )
+    refresh_initramfs_for_modprobe_config()
+
+
+def refresh_initramfs_for_modprobe_config():
+    if not shutil.which("update-initramfs"):
+        print("update-initramfs not found; skipping initramfs refresh.")
+        return
+
+    kernel = shlex.quote(running_kernel())
+    run(f"sudo update-initramfs -u -k {kernel}")
 
 
 def dvb_character_devices():
