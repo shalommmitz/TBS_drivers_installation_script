@@ -41,6 +41,8 @@ The scripts currently:
 - install firmware
 - detect the matching TBS PCI/USB module for the connected hardware
 - load the detected module(s)
+- unload and reload already-loaded detected PCI bridge module(s), so explicit
+  frontend helpers are present before the bridge driver probes the card
 - persist the detected module(s) via `/etc/modules-load.d/tbs.conf`
 
 ## Do Not Reintroduce
@@ -54,6 +56,8 @@ Do not assume the working module is `saa716x_tbs-dvb` or `tbsecp3`. The correct 
 Do not assume `tbsecp3` is always the correct runtime module. That is correct for supported TBS PCIe cards, but USB devices need their matching `dvb-usb-*` module.
 
 Do not assume a PCI bridge module is sufficient by itself. Some TBS PCI cards use `dvb_attach()` for frontend helpers that are not hard module dependencies. For example, TBS 6909 `6909:0001` needs `mxl58x` loaded before `tbsecp3`, otherwise the PCI driver can bind with no `/dev/dvb` nodes.
+
+Do not treat an already-loaded PCI bridge module as proof that the device was initialized correctly. If the helper order changed, reload the bridge module so probe/attach runs again with the helper already present.
 
 Do not expand the build back to the full mixed upstream module set unless the user explicitly wants that.
 

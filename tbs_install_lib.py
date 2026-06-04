@@ -6,6 +6,7 @@ import shlex
 import shutil
 import subprocess
 import tarfile
+import time
 from pathlib import Path
 
 
@@ -36,6 +37,10 @@ TBS_PCI_SUBSYSTEM_VENDOR_IDS = {"6985"}
 SAA716X_TBS_PCI_IDS = {("1131", "7160")}
 SAA716X_PCI_MODULE_CANDIDATES = ["saa716x_tbs-dvb", "saa716x_tbs_dvb"]
 PCI_MODULE_CANDIDATES = ["tbsecp3"] + SAA716X_PCI_MODULE_CANDIDATES
+PCI_BRIDGE_RUNTIME_MODULES = {
+    "tbsecp3",
+    "saa716x_tbs_dvb",
+}
 PCI_FRONTEND_HELPERS = {
     # TBS 6909 / 8 tuners over one satellite input. tbsecp3 uses dvb_attach()
     # for this frontend, so modprobe does not pull it in as a hard dependency.
@@ -313,6 +318,18 @@ def module_exists(module):
         return False
 
 
+def loaded_kernel_modules():
+    try:
+        with Path("/proc/modules").open() as proc_modules:
+            return {
+                line.split()[0]
+                for line in proc_modules
+                if line.split()
+            }
+    except OSError:
+        return set()
+
+
 def detected_usb_ids():
     try:
         output = read_output(["lsusb"])
@@ -511,8 +528,27 @@ def detect_target_modules():
 
 def load_driver_modules(modules):
     unload_conflicting_driver_modules(modules)
+    unload_loaded_pci_bridge_modules(modules)
     for module in modules:
         run(f"sudo modprobe {module}")
+
+
+def unload_loaded_pci_bridge_modules(modules):
+    loaded = loaded_kernel_modules()
+    bridge_modules = [
+        module
+        for module in modules
+        if module in PCI_BRIDGE_RUNTIME_MODULES and module in loaded
+    ]
+    if not bridge_modules:
+        return
+
+    print(
+        "Reloading already-loaded TBS PCI bridge module(s): "
+        + ", ".join(bridge_modules)
+    )
+    quoted = " ".join(shlex.quote(module) for module in reversed(bridge_modules))
+    run("sudo modprobe -r " + quoted, check=False)
 
 
 def unload_conflicting_driver_modules(modules):
@@ -537,9 +573,36 @@ def enable_autoload(modules):
     run(f"printf '%s\\n' {quoted} | sudo tee {MODULE_LOAD_CONF} >/dev/null")
 
 
+def dvb_character_devices():
+    dvb_dir = Path("/dev/dvb")
+    if not dvb_dir.exists():
+        return []
+    return sorted(
+        path
+        for path in dvb_dir.glob("adapter*/*")
+        if path.is_char_device()
+    )
+
+
+def wait_for_dvb_devices(timeout_seconds=10):
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if dvb_character_devices():
+            return True
+        time.sleep(1)
+    return bool(dvb_character_devices())
+
+
 def verify_installation():
+    wait_for_dvb_devices()
     run("ls -la /dev/dvb", check=False)
     run("find /dev/dvb -maxdepth 2 -type c | sort", check=False)
+    if not dvb_character_devices():
+        raise SystemExit(
+            "No DVB character devices appeared under /dev/dvb after loading the "
+            "detected TBS module sequence. Check journalctl -k or dmesg for "
+            "frontend attach and firmware errors."
+        )
 
 
 def remove_tree(path):

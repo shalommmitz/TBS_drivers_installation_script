@@ -48,6 +48,8 @@ The autoload configuration is no longer hardcoded to `tbsecp3`. On PCI systems t
 
 Some PCI cards also need a frontend helper module loaded explicitly before the main PCI bridge driver. The TBS 6909 `6909:0001` card uses `mxl58x`; without it `tbsecp3` can bind to PCI while no `/dev/dvb` adapter appears.
 
+When the detected PCI bridge module is already loaded, the installer unloads and reloads that bridge module after loading any explicit frontend helpers. This matters on hosts where an older `/etc/modules-load.d/tbs.conf` loaded `tbsecp3` by itself during boot: a later `modprobe mxl58x` does not make `tbsecp3` reprobe the card unless the bridge module is reloaded.
+
 The historical `old/install_legacy_bash` script is left in place only as reference.
 
 There is an alternative script at: https://cesbo.com/download/astra/scripts/drv-tbs.sh
