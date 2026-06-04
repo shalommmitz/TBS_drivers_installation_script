@@ -42,6 +42,8 @@ The scripts currently:
 - detect the matching TBS PCI/USB module for the connected hardware
 - write `modprobe.d` soft dependencies when a PCI bridge needs explicit
   frontend helpers, for example `softdep tbsecp3 pre: mxl58x`
+- write an initramfs-tools firmware hook when a frontend probes during early
+  boot, for example copying `dvb-fe-mxl5xx.fw` for `mxl58x`
 - refresh the running kernel's initramfs after writing those soft dependencies,
   so early boot PCI coldplug sees the same module order
 - load the detected module(s)
@@ -66,6 +68,8 @@ Do not treat an already-loaded PCI bridge module as proof that the device was in
 Do not rely only on `/etc/modules-load.d/tbs.conf` for helper ordering on PCI hardware. PCI modalias auto-loading can request the bridge module independently, so helper ordering that must survive reboot belongs in `/etc/modprobe.d/tbs-dvb.conf` as a `softdep`.
 
 Do not assume `/etc/modprobe.d/tbs-dvb.conf` is enough by itself after a change. On Ubuntu, early boot coldplug can happen from initramfs, so the installer must refresh the running kernel's initramfs after writing softdeps.
+
+Do not assume firmware under `/lib/firmware` is visible during early boot attach. TBS 6909 with `mxl58x` can fail all frontends with `Direct firmware load for dvb-fe-mxl5xx.fw failed with error -2` unless that firmware is copied into initramfs.
 
 Do not expand the build back to the full mixed upstream module set unless the user explicitly wants that.
 

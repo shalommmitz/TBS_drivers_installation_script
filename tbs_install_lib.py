@@ -30,6 +30,7 @@ FIRMWARE_DIR = Path("/lib/firmware")
 
 MODULE_LOAD_CONF = Path("/etc/modules-load.d/tbs.conf")
 MODPROBE_CONF = Path("/etc/modprobe.d/tbs-dvb.conf")
+INITRAMFS_FIRMWARE_HOOK = Path("/etc/initramfs-tools/hooks/tbs-dvb-firmware")
 # Some TBS PCIe cards expose only the bridge chip as the primary PCI device,
 # for example Philips/NXP SAA7160 [1131:7160], and identify TBS through the
 # subsystem vendor instead.
@@ -51,6 +52,9 @@ PCI_FRONTEND_HELPER_MODULES = {
     module
     for helpers in PCI_FRONTEND_HELPERS.values()
     for module in helpers
+}
+MODULE_FIRMWARE_FILES = {
+    "mxl58x": ["dvb-fe-mxl5xx.fw"],
 }
 USB_MODULES = [
     "dvb-usb-tbsqbox",
@@ -609,10 +613,50 @@ def enable_modprobe_softdeps(modules):
         ["# Managed by TBS DVB installer; keeps frontend helpers before PCI bridges."]
         + lines,
     )
-    refresh_initramfs_for_modprobe_config()
+    enable_initramfs_firmware_hook(modules)
+    refresh_initramfs_for_tbs_boot_config()
 
 
-def refresh_initramfs_for_modprobe_config():
+def initramfs_firmware_files(modules):
+    files = []
+    seen = set()
+    for module in modules:
+        for firmware in MODULE_FIRMWARE_FILES.get(module, []):
+            if firmware not in seen:
+                seen.add(firmware)
+                files.append(firmware)
+    return files
+
+
+def enable_initramfs_firmware_hook(modules):
+    firmware_files = initramfs_firmware_files(modules)
+    if not firmware_files:
+        return
+
+    lines = [
+        "#!/bin/sh",
+        "set -e",
+        'case "$1" in',
+        "    prereqs) exit 0 ;;",
+        "esac",
+        ". /usr/share/initramfs-tools/hook-functions",
+    ]
+    for firmware in firmware_files:
+        firmware_path = FIRMWARE_DIR / firmware
+        lines.extend(
+            [
+                f"if [ -e {firmware_path} ]; then",
+                f"    copy_file firmware {firmware_path}",
+                "fi",
+            ]
+        )
+
+    run(f"sudo mkdir -p {shlex.quote(str(INITRAMFS_FIRMWARE_HOOK.parent))}")
+    write_root_config_lines(INITRAMFS_FIRMWARE_HOOK, lines)
+    run(f"sudo chmod 755 {INITRAMFS_FIRMWARE_HOOK}")
+
+
+def refresh_initramfs_for_tbs_boot_config():
     if not shutil.which("update-initramfs"):
         print("update-initramfs not found; skipping initramfs refresh.")
         return
